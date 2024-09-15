@@ -1,0 +1,153 @@
+[*]
+[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
+[*] Sun Sep 15 05:00:43 2024
+[*]
+[dumpfile] "/home/toivo/code/pico-ice/serial-ram-emu2/ice/tb2.vcd"
+[dumpfile_mtime] "Sun Sep 15 04:32:35 2024"
+[dumpfile_size] 64418
+[savefile] "/home/toivo/code/pico-ice/serial-ram-emu2/ice/tb2.gtkw"
+[timestart] 528060000
+[size] 2786 1614
+[pos] -1 -1
+*-23.000000 567270000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] tb2.
+[sst_width] 297
+[signals_width] 258
+[sst_expanded] 1
+[sst_vpaned_height] 513
+@28
+tb2.tester.reset
+tb2.tester.clk
+@200
+-
+@28
+tb2.tester.run_mode
+@200
+-
+@28
+tb2.tester.rx_pins[1:0]
+tb2.tester.tx_pins[1:0]
+@200
+-
+@28
+tb2.tester.tx_sreg_valid
+@c00022
+tb2.tester.tx_sreg[23:0]
+@28
+(0)tb2.tester.tx_sreg[23:0]
+(1)tb2.tester.tx_sreg[23:0]
+(2)tb2.tester.tx_sreg[23:0]
+(3)tb2.tester.tx_sreg[23:0]
+(4)tb2.tester.tx_sreg[23:0]
+(5)tb2.tester.tx_sreg[23:0]
+(6)tb2.tester.tx_sreg[23:0]
+(7)tb2.tester.tx_sreg[23:0]
+(8)tb2.tester.tx_sreg[23:0]
+(9)tb2.tester.tx_sreg[23:0]
+(10)tb2.tester.tx_sreg[23:0]
+(11)tb2.tester.tx_sreg[23:0]
+(12)tb2.tester.tx_sreg[23:0]
+(13)tb2.tester.tx_sreg[23:0]
+(14)tb2.tester.tx_sreg[23:0]
+(15)tb2.tester.tx_sreg[23:0]
+(16)tb2.tester.tx_sreg[23:0]
+(17)tb2.tester.tx_sreg[23:0]
+(18)tb2.tester.tx_sreg[23:0]
+(19)tb2.tester.tx_sreg[23:0]
+(20)tb2.tester.tx_sreg[23:0]
+(21)tb2.tester.tx_sreg[23:0]
+(22)tb2.tester.tx_sreg[23:0]
+(23)tb2.tester.tx_sreg[23:0]
+@1401200
+-group_end
+@22
+tb2.tester.tx_sreg_count[3:0]
+@200
+-
+@22
+tb2.tester.tx_index[9:0]
+tb2.tester.tx_index_stop[9:0]
+@200
+-
+@28
+tb2.tester.rx_started
+tb2.tester.rx_receiving_data
+tb2.tester.rx_done
+@22
+tb2.tester.rx_counter[5:0]
+@200
+-
+@22
+tb2.tester.rx_index[9:0]
+@200
+-
+@22
+tb2.rx_payloads0[15:0]
+tb2.rx_payloads1[15:0]
+tb2.rx_payloads2[15:0]
+tb2.rx_payloads3[15:0]
+@200
+-
+@22
+tb2.tester.rx_timestamp[15:0]
+@200
+-
+@22
+tb2.rx_timestamps0[15:0]
+tb2.rx_timestamps1[15:0]
+tb2.rx_timestamps2[15:0]
+tb2.rx_timestamps3[15:0]
+@200
+-
+@28
+tb2.tester.rx_sreg_valid
+tb2.tester.rx_sreg_valid2
+tb2.tester.set_cfg
+@22
+tb2.tester.cfg_header[3:0]
+tb2.tester.cfg_data[11:0]
+tb2.tester.rx_sreg[15:0]
+@200
+-
+@28
+tb2.tester.tx_advance
+@29
+tb2.tester.tx_busy
+@200
+-
+@22
+tb2.tester.tx_index[9:0]
+tb2.tester.tx_index_stop[9:0]
+tb2.tester.tx_countdown[7:0]
+tb2.tester.rx_index_full[15:0]
+@200
+-
+@22
+tb2.tester.msg_index[9:0]
+@200
+-
+@22
+tb2.tx_delay0[7:0]
+tb2.tx_delay1[7:0]
+tb2.tx_delay2[7:0]
+tb2.tx_delay3[7:0]
+@200
+-
+@22
+tb2.tx_count0[3:0]
+tb2.tx_count1[3:0]
+tb2.tx_count2[3:0]
+tb2.tx_count3[3:0]
+@200
+-
+@22
+tb2.tester.cfg_data_saved[11:0]
+@200
+-
+@22
+tb2.tx_payload0[23:0]
+tb2.tx_payload1[23:0]
+tb2.tx_payload2[23:0]
+tb2.tx_payload3[23:0]
+[pattern_trace] 1
+[pattern_trace] 0

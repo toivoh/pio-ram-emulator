@@ -1,0 +1,723 @@
+
+.define PUBLIC FPGA_CLOCK_PIN 24
+
+.define PUBLIC NUM_SERIAL_CYCLES 4
+.define PUBLIC NUM_SERIAL_PINS 4
+
+.define PUBLIC DATA_ADDRESS_SYNC_IRQ 4
+
+
+.define PUBLIC SB_SERIAL_IN_PINS 2
+
+.define PUBLIC SB_SERIAL_IN_LOOP_COUNT 10
+//.define PUBLIC SB_SERIAL_IN_LOOP_COUNT 4
+
+.define PUBLIC SB_SERIAL_OUT_PINS 2
+.define PUBLIC SB_SERIAL_OUT_LENGTH_BITS 4
+
+
+
+.define CLOCK_PIN 24
+
+.define PUBLIC SBIO2_NUM_PINS 2
+
+.define PUBLIC SBIO2_RX_LOOP_COUNT 8
+.define PUBLIC SBIO2_RX_PAD_COUNT 16
+//.define PUBLIC SBIO2_RX_LOOP_COUNT 2
+//.define PUBLIC SBIO2_RX_PAD_COUNT 24
+
+.define PUBLIC SBIO2_TX_START_BITS 3
+.define PUBLIC SBIO2_TX_LOOP_COUNT 8
+
+//.define PUBLIC SBIO2_TX_START_BITS 1
+//.define PUBLIC SBIO2_TX_LOOP_COUNT 12
+
+.define PUBLIC SBIO2_RX_ADDR_PAD_COUNT (31-SBIO2_NUM_PINS*SBIO2_RX_LOOP_COUNT)
+
+
+// Output FPGA clock and frame pulse
+// =================================
+// FPGA clock is half of sysclk (PIO clock), and is output using side set every instruction.
+// Change sync output only at negative clock edge, output on pins.
+// Outputs a sync pulse at period determined by loop counter read in from TX FIFO at start (plus fpga_frame_clock_NONLOOP_CYCLES).
+.program fpga_frame_clock
+.side_set 1 // one side set bit, mandatory, changes value (not pindir)
+
+// How much to subtract from the number of FPGA clocks per frame to get the initial loop count:
+// the number of FPGA cycles outside wait_loop plus one (because y = 0 means one loop cycle).
+.define PUBLIC NONLOOP_CYCLES 2+1
+
+.define PUBLIC NEW_FRAME_PIO_IRQ 0
+
+	set pins, 0				side 0 // set sync low, clock low while waiting for initialization
+	// Read loop count into X
+	pull 					side 0
+	mov x, osr 				side 1
+
+.wrap_target
+	// Output sync pulse for one FPGA cycle, signal new frame interrupt
+	set pins, 1				side 0 // output new sync value negative clock edge
+	irq NEW_FRAME_PIO_IRQ	side 1
+	set pins, 0				side 0 // output new sync value negative clock edge
+	mov y, x				side 1
+	// Wait to output next sync pulse
+wait_loop:
+		nop					side 0
+	jmp y--, wait_loop		side 1
+.wrap
+
+% c-sdk {
+static inline void fpga_frame_clock_program_init(PIO pio, uint sm, uint offset, uint clock_pin, uint sync_pin) {
+	pio_sm_config c = fpga_frame_clock_program_get_default_config(offset);
+
+	sm_config_set_sideset_pins(&c, clock_pin);
+	sm_config_set_out_pins(&c, sync_pin, 1);
+	sm_config_set_set_pins(&c, sync_pin, 1);
+	pio_gpio_init(pio, clock_pin);
+	pio_gpio_init(pio, sync_pin);
+	pio_sm_set_consecutive_pindirs(pio, sm, clock_pin, 1, true);
+	pio_sm_set_consecutive_pindirs(pio, sm, sync_pin, 1, true);
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
+
+
+// Output FPGA clock and RAM enable
+// ================================
+// FPGA clock is half of sysclk (PIO clock), and is output using side set.
+// Change ram_enable output only at negative clock edge, output on pins.
+.program fpga_clock
+.side_set 1 // one side set bit, mandatory, changes value (not pindir)
+
+	set x, 0		side 0
+.wrap_target
+	pull noblock 	side 1 // osr = x if TX FIFO empty
+	mov x, osr 		side 0 // replace x with latest value from TX FIFO if available
+	nop 			side 1
+	mov pins, x 	side 0 // output new ram_enable on negative clock edge
+.wrap
+
+% c-sdk {
+static inline void fpga_clock_program_init(PIO pio, uint sm, uint offset, uint clock_pin, uint ram_enable_pin) {
+	pio_sm_config c = fpga_clock_program_get_default_config(offset);
+
+	sm_config_set_sideset_pins(&c, clock_pin);
+	sm_config_set_out_pins(&c, ram_enable_pin, 1); // for MOV
+	pio_gpio_init(pio, clock_pin);
+	pio_gpio_init(pio, ram_enable_pin);
+	pio_sm_set_consecutive_pindirs(pio, sm, clock_pin, 1, true);
+	pio_sm_set_consecutive_pindirs(pio, sm, ram_enable_pin, 1, true);
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
+
+
+// Read in address bits
+// ====================
+// Start after fpga_clock program.
+// Uses autopush.
+// JMP pin should be addr0.
+.program address_in
+	// Read top address bits into X from TX FIFO
+	pull
+	mov x, osr
+
+	wait 1 gpio FPGA_CLOCK_PIN // Synchronize with FPGA clock
+	nop // needed to sync up FPGA clock?
+	// 2-cycle looop to wait for a high addr0 to start the first transaction.
+wait_synced:
+		jmp pin synced // falling edge
+	jmp wait_synced
+synced:
+
+	nop // rising edge
+.wrap_target
+	in pins, 4 [1] // falling edge
+	in pins, 4 [1] // falling edge
+	in pins, 4 [1] // falling edge
+	in pins, 4     // falling edge
+	in x, 15 // Fill the top address bits, autopush
+.wrap
+
+% c-sdk {
+static inline void address_in_program_init(PIO pio, uint sm, uint offset, uint pin) {
+	pio_sm_config c = address_in_program_get_default_config(offset);
+
+	sm_config_set_in_shift(&c, true, true, 31); // shift right, autopush
+
+	sm_config_set_in_pins(&c, pin);
+	pio_sm_set_consecutive_pindirs(pio, sm, pin, NUM_SERIAL_PINS, false);
+	sm_config_set_jmp_pin(&c, pin); // set JMP pin to addr0
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
+
+
+// Write out data bits
+// ===================
+// Waits for first data to arrive in TX FIFO, then waits a configurable number of cycles before starting to send out data.
+// Uses autopull.
+.program data_out
+	// Read in wait timer from TX FIFO
+	pull
+	mov y, osr
+
+	// Wait for address_in program to start
+	//wait 1 irq DATA_ADDRESS_SYNC_IRQ
+	// Wait for first data to come into TX FIFO
+	pull
+	// Additional delay before starting the output
+wait_loop:
+	jmp y--, wait_loop
+
+	// Output loop
+.wrap_target
+	out pins, NUM_SERIAL_PINS [1] // autopull
+.wrap
+
+% c-sdk {
+static inline void data_out_program_init(PIO pio, uint sm, uint offset, uint pin) {
+	pio_sm_config c = data_out_program_get_default_config(offset);
+
+	sm_config_set_out_shift(&c, true, true, NUM_SERIAL_CYCLES*NUM_SERIAL_PINS); // shift right, autopull
+
+	sm_config_set_out_pins(&c, pin, NUM_SERIAL_PINS);
+	sm_config_set_set_pins(&c, pin, NUM_SERIAL_PINS);
+	for (int i = 0; i < NUM_SERIAL_PINS; i++) pio_gpio_init(pio, pin + i);
+	pio_sm_set_consecutive_pindirs(pio, sm, pin, NUM_SERIAL_PINS, true);
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
+
+
+// Write out data bits, echo to RX FIFO
+// ====================================
+// Waits for first data to arrive in TX FIFO, then waits a configurable number of cycles before starting to send out data.
+// Uses autopull.
+.program data_out_echo
+	// Read in wait timer from TX FIFO
+	// TODO: put back
+	set y, (2*2)
+	//pull
+	//mov y, osr
+
+	// Wait for first data to come into TX FIFO
+	pull
+	in osr, 32 // echo to RX FIFO (autopush)
+	// Additional delay before starting the output
+wait_loop:
+	jmp y--, wait_loop
+
+	// Output loop
+	// OSR full
+	out pins, NUM_SERIAL_PINS [1]
+.wrap_target
+	out pins, NUM_SERIAL_PINS [1]
+	out pins, NUM_SERIAL_PINS [1]
+	out pins, NUM_SERIAL_PINS // autopull
+	//in osr, 32 // echo to RX FIFO (autopush)
+	mov isr, osr // copy osr after autopull
+	out pins, NUM_SERIAL_PINS
+	push noblock // echo 
+	//push // echo, should be noblock, but currently giving trouble...
+.wrap
+
+% c-sdk {
+static inline void data_out_echo_program_init(PIO pio, uint sm, uint offset, uint pin) {
+	pio_sm_config c = data_out_echo_program_get_default_config(offset);
+
+	sm_config_set_out_shift(&c, true, true, NUM_SERIAL_CYCLES*NUM_SERIAL_PINS); // shift right, autopull
+	sm_config_set_in_shift( &c, true, true, 32); // shift right (doesn't matter), autopush
+
+	sm_config_set_out_pins(&c, pin, NUM_SERIAL_PINS);
+	sm_config_set_set_pins(&c, pin, NUM_SERIAL_PINS);
+	for (int i = 0; i < NUM_SERIAL_PINS; i++) pio_gpio_init(pio, pin + i);
+	pio_sm_set_consecutive_pindirs(pio, sm, pin, NUM_SERIAL_PINS, true);
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
+
+
+// Read fixed length input message with start bit
+// ==============================================
+// Idle is when pin is high, start bit is when pin is low!
+.program sb_serial_in
+
+.wrap_target
+	wait 1 gpio FPGA_CLOCK_PIN // Synchronize with FPGA clock
+	set x, (SB_SERIAL_IN_LOOP_COUNT-1) // odd // wait one cycle to get in sync? Seems to stop us from reading the start bits as data bits
+wait_start_bit:
+	jmp pin, wait_start_bit [1] // even
+loop:
+		in pins, SB_SERIAL_IN_PINS // even
+	jmp x--, loop       // odd
+	in null, (32 - SB_SERIAL_IN_PINS*SB_SERIAL_IN_LOOP_COUNT)
+	push noblock
+	// ok to lose sync, we will resync
+.wrap
+
+% c-sdk {
+static inline void sb_serial_in_program_init(PIO pio, uint sm, uint offset, uint pin) {
+	pio_sm_set_consecutive_pindirs(pio, sm, pin, SB_SERIAL_IN_PINS, false);
+	// for (int i = 0; i < SB_SERIAL_IN_PINS; i++) pio_gpio_init(pio, pin + i); // not needed
+
+	pio_sm_config c = sb_serial_in_program_get_default_config(offset);
+
+	sm_config_set_in_pins(&c, pin);
+	sm_config_set_jmp_pin(&c, pin); // set JMP pin to first pin: detects start bit
+
+	//sm_config_set_in_shift(&c, true, true, SB_SERIAL_IN_PINS*SB_SERIAL_IN_LOOP_COUNT); // shift right, autopush
+	sm_config_set_in_shift(&c, true, false, 32); // shift right, no autopush
+
+	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX); // Only need RX fifo, make it 8 deep
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
+
+
+// Read fixed length input message with start bit v2
+// =================================================
+// Idle is when pin is high, start bit is when pin is low!
+.program sb_serial_in2
+	wait 1 gpio FPGA_CLOCK_PIN // Synchronize with FPGA clock
+.wrap_target
+wait_start_bit:
+	jmp pin, wait_start_bit [1] // odd
+	set x, (SB_SERIAL_IN_LOOP_COUNT-1) // odd // wait one cycle to get in sync? Seems to stop us from reading the start bits as data bits
+loop:
+		in pins, SB_SERIAL_IN_PINS // even
+	jmp x--, loop       // odd
+	in null, (32 - SB_SERIAL_IN_PINS*SB_SERIAL_IN_LOOP_COUNT) // even // autopush
+.wrap
+
+% c-sdk {
+static inline void sb_serial_in2_program_init(PIO pio, uint sm, uint offset, uint pin) {
+	pio_sm_set_consecutive_pindirs(pio, sm, pin, SB_SERIAL_IN_PINS, false);
+	// for (int i = 0; i < SB_SERIAL_IN_PINS; i++) pio_gpio_init(pio, pin + i); // not needed
+
+	pio_sm_config c = sb_serial_in2_program_get_default_config(offset);
+
+	sm_config_set_in_pins(&c, pin);
+	sm_config_set_jmp_pin(&c, pin); // set JMP pin to first pin: detects start bit
+
+	sm_config_set_in_shift(&c, true, true, 32); // shift right, autopush
+	//sm_config_set_in_shift(&c, true, false, 32); // shift right, no autopush
+
+	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX); // Only need RX fifo, make it 8 deep
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
+
+
+// Write variable length output message with start bit
+// ===================================================
+// The receiver is expected to know the message length based on the message.
+// The message should include start bits.
+// Idle is when pin is high, start bit is when pin is low!
+.program sb_serial_out
+.side_set SB_SERIAL_OUT_PINS opt // one side set bit, optional, changes value (not pindir)
+
+/*
+	set pins, 1 // Turn off start bits
+	set x, 0    // Default message: send zeros for one cycle (no start bit)
+	wait 1 gpio FPGA_CLOCK_PIN // Synchronize with FPGA clock
+	//nop // wait one cycle to get in sync?
+.wrap_target
+	// pull noblock does mov osr, x if the tx fifo is empty
+	// output zero on pins to avoid sending start bit at this point
+	pull noblock     side 1           // even
+	// y = loop count - 1 + 1 start bit
+	out y, SB_SERIAL_OUT_LENGTH_BITS  // odd
+loop:
+		out pins, SB_SERIAL_OUT_PINS  // even
+	jmp y--, loop                     // odd
+.wrap
+*/
+
+	set pins, 1 // Turn off start bits
+.wrap_target
+	pull     side 1 // block for now
+	wait 1 gpio FPGA_CLOCK_PIN // Synchronize with FPGA clock
+	//nop // wait one cycle to get in sync? Seems to work with or without this
+	//set y, (SB_SERIAL_IN_LOOP_COUNT+1-1) // odd
+	// y = loop count - 1
+	out y, SB_SERIAL_OUT_LENGTH_BITS // odd
+loop:
+		out pins, SB_SERIAL_IN_PINS // even
+	jmp y--, loop       // odd
+	// stop bits
+	set pins, 1 // even
+	// ok to lose sync, we will resync
+.wrap
+
+
+// set set pins, out pins, sideset
+% c-sdk {
+static inline void sb_serial_out_program_init(PIO pio, uint sm, uint offset, uint pin) {
+	gpio_set_dir_out_masked(((1 << SB_SERIAL_OUT_PINS) - 1) << pin); // Seems to be needed to send output?
+
+	pio_sm_set_pins_with_mask(pio, sm, 0, ((1u << SB_SERIAL_OUT_PINS) - 1u) << pin); // Set initial pin values to zero
+	pio_sm_set_consecutive_pindirs(pio, sm, pin, SB_SERIAL_OUT_PINS, true);
+	for (int i = 0; i < SB_SERIAL_OUT_PINS; i++) pio_gpio_init(pio, pin + i);
+
+	pio_sm_config c = sb_serial_out_program_get_default_config(offset);
+
+	sm_config_set_out_shift(&c, true, false, 32); // shift right, no autopull
+
+	sm_config_set_out_pins(&c, pin, SB_SERIAL_OUT_PINS);
+	sm_config_set_set_pins(&c, pin, SB_SERIAL_OUT_PINS);
+	sm_config_set_sideset_pins(&c, pin);
+
+	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX); // Only need a TX fifo, make it 8 deep
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
+
+
+
+// SBIO2 RX
+// ========
+/*
+// SBIO RX 00
+// ----------
+// y must contain the top address bits (or zero if the data is used for something else)
+	set y, 0 // TODO: remove!      // 1
+.program sbio2_rx_00
+	wait 1 gpio FPGA_CLOCK_PIN     // 1    // TODO: Should we wait for 0 or 1?
+.wrap_target
+restart:
+wait_start_bit:
+	jmp pin, wait_start_bit [1]    // even
+	jmp pin, skip1                 // even
+	set x, (SBIO2_RX_LOOP_COUNT-2) // odd
+	jmp pin, skip2 [1]             // even
+	// The code after this skip takes 2*SBIO2_RX_LOOP_COUNT cycles before wrapping
+loop:
+		in pins, SBIO2_NUM_PINS    // even
+	jmp x--, loop                  // odd
+	in pins, SBIO2_NUM_PINS        // even
+	in y, SBIO2_RX_PAD_COUNT       // odd  // autopush
+.wrap
+skip1:
+	nop [2]                        // 1
+skip2:
+	jmp restart [2*SBIO2_RX_LOOP_COUNT-1] // 1
+*/
+
+// SBIO RX 00
+// ----------
+// Use `jmp pin` on odd cycles, `in pins` on even -- `jmp pin` seems to be one cycle ahead?
+// y must contain the top address bits (or zero if the data is used for something else)
+	set y, 0 // TODO: remove!      // 1
+.program sbio2_rx_00
+	wait 1 gpio FPGA_CLOCK_PIN     // 1    // TODO: Should we wait for 0 or 1?
+.wrap_target
+restart:
+wait_start_bit:
+	jmp pin, wait_start_bit [1]    // odd
+	jmp pin, skip1                 // odd
+	set x, (SBIO2_RX_LOOP_COUNT-2) // even
+	jmp pin, skip2 [2]             // odd
+	// The code after this skip takes 2*SBIO2_RX_LOOP_COUNT+1 cycles before wrapping
+loop:
+		in pins, SBIO2_NUM_PINS    // even
+	jmp x--, loop                  // odd
+	in pins, SBIO2_NUM_PINS        // even
+	in y, SBIO2_RX_PAD_COUNT [1]   // odd  // autopush
+.wrap
+skip1:
+	nop [3]                        // 1
+skip2:
+	jmp restart [2*SBIO2_RX_LOOP_COUNT] // 1
+
+
+% c-sdk {
+static inline void sbio2_rx_00_program_init(PIO pio, uint sm, uint offset, uint pin, uint jmp_pin) {
+	pio_sm_set_consecutive_pindirs(pio, sm, pin, SBIO2_NUM_PINS, false);
+	// for (int i = 0; i < SBIO2_NUM_PINS; i++) pio_gpio_init(pio, pin + i); // not needed
+
+	pio_sm_config c = sbio2_rx_00_program_get_default_config(offset);
+
+	sm_config_set_in_pins(&c, pin);
+	sm_config_set_jmp_pin(&c, jmp_pin); // used to detect start bit and header
+
+	sm_config_set_in_shift(&c, true, true, SBIO2_NUM_PINS*SBIO2_RX_LOOP_COUNT+SBIO2_RX_PAD_COUNT); // shift right, autopush
+
+	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX); // Only need RX fifo, make it 8 deep
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
+
+/*
+// SBIO RX 01
+// ----------
+// y must contain the top address bits (or zero if the data is used for something else)
+	set y, 0 // TODO: remove!      // 1
+.program sbio2_rx_01
+	wait 1 gpio FPGA_CLOCK_PIN     // 1    // TODO: Should we wait for 0 or 1?
+.wrap_target
+restart:
+wait_start_bit:
+	jmp pin, wait_start_bit [1]    // even
+	jmp pin, continue1             // even
+
+skip1:
+	nop [2]                        // 1
+skip2:
+	jmp restart [2*SBIO2_RX_LOOP_COUNT-1] // 1
+
+continue1:
+	set x, (SBIO2_RX_LOOP_COUNT-2) // odd
+	jmp pin, skip2 [1]             // even
+	// The code after this skip takes 2*SBIO2_RX_LOOP_COUNT cycles before wrapping
+loop:
+		in pins, SBIO2_NUM_PINS    // even
+	jmp x--, loop                  // odd
+	in pins, SBIO2_NUM_PINS        // even
+	in y, SBIO2_RX_PAD_COUNT       // odd  // autopush
+.wrap
+*/
+
+// SBIO RX 01
+// ----------
+// Use `jmp pin` on odd cycles, `in pins` on even -- `jmp pin` seems to be one cycle ahead?
+// y must contain the top address bits (or zero if the data is used for something else)
+	set y, 0 // TODO: remove!      // 1
+.program sbio2_rx_01
+	wait 1 gpio FPGA_CLOCK_PIN     // 1    // TODO: Should we wait for 0 or 1?
+.wrap_target
+restart:
+wait_start_bit:
+	jmp pin, wait_start_bit [1]    // odd
+	jmp pin, continue1             // odd
+
+skip1:
+	nop [3]                        // 1
+skip2:
+	jmp restart [2*SBIO2_RX_LOOP_COUNT] // 1
+
+continue1:
+	set x, (SBIO2_RX_LOOP_COUNT-2) // even
+	jmp pin, skip2 [2]             // odd
+	// The code after this skip takes 2*SBIO2_RX_LOOP_COUNT+1 cycles before wrapping
+loop:
+		in pins, SBIO2_NUM_PINS    // even
+	jmp x--, loop                  // odd
+	in pins, SBIO2_NUM_PINS        // even
+	in y, SBIO2_RX_PAD_COUNT [1]   // odd  // autopush
+.wrap
+
+
+% c-sdk {
+static inline void sbio2_rx_01_program_init(PIO pio, uint sm, uint offset, uint pin) {
+	pio_sm_set_consecutive_pindirs(pio, sm, pin, SBIO2_NUM_PINS, false);
+	// for (int i = 0; i < SBIO2_NUM_PINS; i++) pio_gpio_init(pio, pin + i); // not needed
+
+	pio_sm_config c = sbio2_rx_01_program_get_default_config(offset);
+
+	sm_config_set_in_pins(&c, pin);
+	sm_config_set_jmp_pin(&c, pin); // set JMP pin to first pin: detects start bit
+
+	sm_config_set_in_shift(&c, true, true, SBIO2_NUM_PINS*SBIO2_RX_LOOP_COUNT+SBIO2_RX_PAD_COUNT); // shift right, autopush
+
+	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX); // Only need RX fifo, make it 8 deep
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
+
+/*
+// SBIO2 RX
+// ========
+
+// SBIO RX 10
+// ----------
+// y must contain the top address bits (or zero if the data is used for something else)
+	set y, 0 // TODO: remove!      // 1
+.program sbio2_rx_10
+	wait 1 gpio FPGA_CLOCK_PIN     // 1    // TODO: Should we wait for 0 or 1?
+.wrap_target
+restart:
+wait_start_bit:
+	jmp pin, wait_start_bit [1]    // even
+	jmp pin, skip1                 // even
+	set x, (SBIO2_RX_LOOP_COUNT-2) // odd
+	jmp pin, continue2 [1]         // even
+
+skip2:
+	jmp restart [2*SBIO2_RX_LOOP_COUNT-1] // 1
+skip1:
+	jmp skip2 [2]                         // 1
+
+continue2:
+	// The code after this skip takes 2*SBIO2_RX_LOOP_COUNT cycles before wrapping
+loop:
+		in pins, SBIO2_NUM_PINS    // even
+	jmp x--, loop                  // odd
+	in pins, SBIO2_NUM_PINS        // even
+	in y, SBIO2_RX_PAD_COUNT       // odd  // autopush
+.wrap
+*/
+
+// SBIO2 RX
+// ========
+
+// SBIO RX 10
+// ----------
+// Use `jmp pin` on odd cycles, `in pins` on even -- `jmp pin` seems to be one cycle ahead?
+// y must contain the top address bits (or zero if the data is used for something else)
+	set y, 0 // TODO: remove!      // 1
+.program sbio2_rx_10
+	wait 1 gpio FPGA_CLOCK_PIN     // 1    // TODO: Should we wait for 0 or 1?
+.wrap_target
+restart:
+wait_start_bit:
+	jmp pin, wait_start_bit [1]    // odd
+	jmp pin, skip1                 // odd
+	set x, (SBIO2_RX_LOOP_COUNT-2) // even
+	jmp pin, continue2 [2]         // odd
+
+skip2:
+	jmp restart [2*SBIO2_RX_LOOP_COUNT] // 1
+skip1:
+	jmp skip2 [3]                         // 1
+
+continue2:
+	// The code after this skip takes 2*SBIO2_RX_LOOP_COUNT+1 cycles before wrapping
+loop:
+		in pins, SBIO2_NUM_PINS    // even
+	jmp x--, loop                  // odd
+	in pins, SBIO2_NUM_PINS        // even
+	in y, SBIO2_RX_PAD_COUNT [1]   // odd  // autopush
+.wrap
+
+% c-sdk {
+static inline void sbio2_rx_10_program_init(PIO pio, uint sm, uint offset, uint pin) {
+	pio_sm_set_consecutive_pindirs(pio, sm, pin, SBIO2_NUM_PINS, false);
+	// for (int i = 0; i < SBIO2_NUM_PINS; i++) pio_gpio_init(pio, pin + i); // not needed
+
+	pio_sm_config c = sbio2_rx_10_program_get_default_config(offset);
+
+	sm_config_set_in_pins(&c, pin);
+	sm_config_set_jmp_pin(&c, pin); // set JMP pin to first pin: detects start bit
+
+	sm_config_set_in_shift(&c, true, true, SBIO2_NUM_PINS*SBIO2_RX_LOOP_COUNT+SBIO2_RX_PAD_COUNT); // shift right, autopush
+
+	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX); // Only need RX fifo, make it 8 deep
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
+
+
+// SBIO RX address 01
+// ------------------
+// Use `jmp pin` on odd cycles, `in pins` on even -- `jmp pin` seems to be one cycle ahead?
+// y must contain the top address bits (or zero if the data is used for something else)
+.program sbio2_rx_addr_01
+	// Read top address bits into Y from TX FIFO
+	pull
+	mov y, osr
+	wait 1 gpio FPGA_CLOCK_PIN     // 1    // TODO: Should we wait for 0 or 1?
+.wrap_target
+restart:
+wait_start_bit:
+	jmp pin, wait_start_bit [1]    // odd
+	jmp pin, continue1             // odd
+
+skip1:
+	nop [3]                        // 1
+skip2:
+	jmp restart [2*SBIO2_RX_LOOP_COUNT] // 1
+
+continue1:
+	set x, (SBIO2_RX_LOOP_COUNT-2) // even
+	jmp pin, skip2 [2]             // odd
+	// The code after this skip takes 2*SBIO2_RX_LOOP_COUNT+1 cycles before wrapping
+loop:
+		in pins, SBIO2_NUM_PINS    // even
+	jmp x--, loop                  // odd
+	in pins, SBIO2_NUM_PINS        // even
+	in y, SBIO2_RX_ADDR_PAD_COUNT [1]   // odd  // autopush
+.wrap
+
+
+% c-sdk {
+static inline void sbio2_rx_addr_01_program_init(PIO pio, uint sm, uint offset, uint pin, uint jmp_pin) {
+	pio_sm_set_consecutive_pindirs(pio, sm, pin, SBIO2_NUM_PINS, false);
+	// for (int i = 0; i < SBIO2_NUM_PINS; i++) pio_gpio_init(pio, pin + i); // not needed
+
+	pio_sm_config c = sbio2_rx_addr_01_program_get_default_config(offset);
+
+	sm_config_set_in_pins(&c, pin);
+	sm_config_set_jmp_pin(&c, jmp_pin); // used to detect start bit and header
+
+	sm_config_set_in_shift(&c, true, true, SBIO2_NUM_PINS*SBIO2_RX_LOOP_COUNT+SBIO2_RX_ADDR_PAD_COUNT); // shift right, autopush
+
+	//sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX); // Only need RX fifo, make it 8 deep -- yes, needed for initial pull to set up y!
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
+
+
+
+// SBIO2 TX
+// ========
+.program sbio2_tx
+.side_set 1 opt // one side set bit, optional, changes value (not pindir)
+.wrap_target
+	// Ok to lose sync, we will resync.
+	pull     side 1 // even // block for now, side-set takes effect directly
+	wait 0 gpio FPGA_CLOCK_PIN // Synchronize with FPGA clock
+	set y, (SBIO2_TX_LOOP_COUNT-1) [SBIO2_TX_START_BITS*2-1]   side 0 // even
+loop:
+		out pins, SBIO2_NUM_PINS // even
+	jmp y--, loop       // odd
+	// Make sure that last output is held for 2 cycles before wrapping to the stop bit.
+.wrap
+
+// set set pins, out pins, sideset
+% c-sdk {
+static inline void sbio2_tx_program_init(PIO pio, uint sm, uint offset, uint pin) {
+	gpio_set_dir_out_masked(((1 << SBIO2_NUM_PINS) - 1) << pin); // Seems to be needed to send output?
+
+	pio_sm_set_pins_with_mask(pio, sm, -1, ((1u << SBIO2_NUM_PINS) - 1u) << pin); // Set initial pin values to one
+	pio_sm_set_consecutive_pindirs(pio, sm, pin, SBIO2_NUM_PINS, true);
+	for (int i = 0; i < SBIO2_NUM_PINS; i++) pio_gpio_init(pio, pin + i);
+
+	pio_sm_config c = sbio2_tx_program_get_default_config(offset);
+
+	sm_config_set_out_shift(&c, true, false, 32); // shift right, no autopull
+
+	sm_config_set_out_pins(&c, pin, SBIO2_NUM_PINS);
+	sm_config_set_set_pins(&c, pin, SBIO2_NUM_PINS);
+	sm_config_set_sideset_pins(&c, pin);
+
+	sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX); // Only need a TX fifo, make it 8 deep
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
