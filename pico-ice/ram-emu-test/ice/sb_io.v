@@ -1,8 +1,3 @@
-/*
- * Copyright (c) 2024 Toivo Henningsson <toivo.h.h@gmail.com>
- * SPDX-License-Identifier: Apache-2.0
- */
-
 `default_nettype none
 
 module sbio_monitor #(parameter IO_BITS=2, SENS_BITS=2, COUNTER_BITS=5, INACTIVE_COUNTER_VALUE=31) (
