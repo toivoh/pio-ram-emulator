@@ -15,7 +15,7 @@ Features:
 	- Block transfers: > 8 MB/s read and 8 MB/s write at the same time, with >= 48 sixteen bit words per transaction
 - No CPU involvement except for initialization
 	- Response handling is implemented using the RP2040 PIO and DMA for low latency and predictable behavior
-- 22 cycles from start bit of read message sent to start bit of first read data message received (as measured using the [test code](pico-ice/) on a [Pico-Ice](https://pico-ice.tinyvision.ai/))
+- 22 cycles from start bit of read message sent to start bit of first read data message received (as measured using the [test code](pico-ice/ram-emu-test/) on a [Pico-Ice](https://pico-ice.tinyvision.ai/))
 	- ==> 12 cycles read latency if counting from the last address bit sent
 	- Pin input and output registers included in the latency
 	- RP2040 clocked at 50 MHz, iCE40UP5K FPGA clocked at 25 MHz
@@ -23,4 +23,4 @@ Features:
 Also in this repository
 
 - [Documentation](docs/pio-ram-emulator.md)
-- [Test code](pico-ice/) to test the RAM emulator and measure its read latency using a [Pico-Ice](https://pico-ice.tinyvision.ai/)
+- [Test code](pico-ice/ram-emu-test/) to test the RAM emulator and measure its read latency using a [Pico-Ice](https://pico-ice.tinyvision.ai/)
