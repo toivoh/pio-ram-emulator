@@ -15,8 +15,8 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/pico-ice-sdk/)
 add_executable(${CMAKE_PROJECT_NAME}
 	ram-emu-test.c
 	usb_descriptors.c
-	../../ram-emu.c
-	../../ram-emu.h
+	../../../ram-emu.c
+	../../../ram-emu.h
 	)
 
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES PICO_TARGET_LINKER_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/../../sram_memmap.ld)
