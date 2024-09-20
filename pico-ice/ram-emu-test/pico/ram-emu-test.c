@@ -10,7 +10,7 @@
 #include "ice_led.h"
 #include <tusb.h>
 
-#include "../../ram-emu.h"
+#include "../../../ram-emu.h"
 #include "build/serial-ram-emu.pio.h"
 
 
