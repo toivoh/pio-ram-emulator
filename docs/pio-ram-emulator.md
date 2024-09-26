@@ -13,7 +13,7 @@ Features:
 	- Block transfers: > 8 MB/s read and 8 MB/s write at the same time, with >= 48 sixteen bit words per transaction
 - No CPU involvement except for initialization
 	- Response handling is implemented using the RP2040 PIO and DMA for low latency and predictable behavior
-- 22 cycles from start bit of read message sent to start bit of first read data message received (as measured using the [test code](../pico-ice/ram-emu-test) on a [Pico-Ice](https://pico-ice.tinyvision.ai/))
+- 22 cycles from start bit of read message sent to start bit of first read data message received (as measured using the [test code](../pico-ice/ram-emu-test/) on a [Pico-Ice](https://pico-ice.tinyvision.ai/))
 	- ==> 12 cycles read latency if counting from the last address bit sent
 	- Pin input and output registers included in the latency
 	- RP2040 clocked at 50 MHz, iCE40UP5K FPGA clocked at 25 MHz
@@ -104,7 +104,13 @@ In practice, it seems that
 
 This seems to hold so far in experiments. If additional (possibly higher priority) DMA channels are added to the code that runs in the RP2040, or the DMA is not granted priority above the CPU, these timing assumptions might be violated.
 
-Limitations and todo
---------------------
+Limitations
+-----------
+The RP2040 must be clocked at exactly twice the clock frequency of the user project, and must drive its clock.
+
+The TX pins must be consecutive for the RP2040, as must the RX pins.
+
+To do
+-----
 The four DMA channels that receive counts and addresses will stop after `2^32-1` counts/addresses received.
-This can be avoided by using four additional DMA: one for each of the original four to chain to. This should not be hard, but has not been implemented yet.
+This can be avoided by using four additional DMAs: one for each of the original four to chain to. This should not be hard, but has not been implemented yet.
