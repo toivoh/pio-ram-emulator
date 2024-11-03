@@ -28,13 +28,6 @@
 #endif
 
 
-enum { TX_HEADER_BITS = 4 };
-enum { TX_HEADER_TRANSCOUNT = 0, TX_HEADER_ADDR = 1, TX_HEADER_DATA = 4, TX_HEADER_NONE = 5 };
-
-enum { RX_CFG_BITS_PER_MSG = 14, MSG_INDEX_BITS = 10, MAX_TX_BITS = 24, MAX_MESSAGES = 1024 };
-
-
-
 static void init() {
 	// Initialize PLL, USB, ...
 	// ========================
