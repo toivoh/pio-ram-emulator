@@ -25,3 +25,5 @@ Also in this repository
 - [Documentation](docs/pio-ram-emulator.md)
 - [Test code](pico-ice/ram-emu-test/) to test the RAM emulator and measure its read latency using a [Pico-Ice](https://pico-ice.tinyvision.ai/)
 - [Pico-Ice version](pico-ice/ram-emu/) of the RAM emulator
+
+For an example of using the RAM emulator in a Tiny Tapeout design / on a Pico-Ice, including helper modules that handle part of the protocol, see https://github.com/toivoh/tt09-pio-ram-emulator-example.

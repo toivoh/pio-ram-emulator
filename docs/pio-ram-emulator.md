@@ -18,6 +18,8 @@ Features:
 	- Pin input and output registers included in the latency
 	- RP2040 clocked at 50 MHz, iCE40UP5K FPGA clocked at 25 MHz
 
+For an example of using the RAM emulator in a design, including helper modules that handle part of the protocol, see https://github.com/toivoh/tt09-pio-ram-emulator-example.
+
 Writing to memory
 -----------------
 ![](writing.png)
