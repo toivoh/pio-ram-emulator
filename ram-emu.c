@@ -174,8 +174,8 @@ bool ram_emu_init(int rx_pin_base, int tx_pin_base, bool start_dma) {
 	psm = &rx_wcount_psm;
 	if (add_psm(psm, pio, &sbio2_rx_00_program)) sbio2_rx_00_program_init(pio, psm->sm, psm->offset, rx_pin_base, rx_pin_base); else ok = false;
 
-	// RX rcount-- initialize after RX waddr
-	// -------------------------------------
+	// RX rcount-- initialize after RX wcount (clone)
+	// ----------------------------------------------
 	psm = &rx_rcount_psm;
 	if (clone_psm(psm, &rx_wcount_psm)) sbio2_rx_00_program_init(pio, psm->sm, psm->offset, rx_pin_base, rx_pin_base + 1); else ok = false;
 
@@ -187,8 +187,8 @@ bool ram_emu_init(int rx_pin_base, int tx_pin_base, bool start_dma) {
 	if (add_psm(psm, pio, &sbio2_rx_addr_01_program)) sbio2_rx_addr_01_program_init(pio, psm->sm, psm->offset, rx_pin_base, rx_pin_base); else ok = false;
 	pio_sm_put(rx_waddr_psm.pio, rx_waddr_psm.sm, ((int)emu_ram)>>17); // Initialize aligned buffer address
 
-	// RX raddr -- initialize after RX waddr
-	// -------------------------------------
+	// RX raddr -- initialize after RX waddr (clone)
+	// ---------------------------------------------
 	psm = &rx_raddr_psm;
 	if (clone_psm(psm, &rx_waddr_psm)) sbio2_rx_addr_01_program_init(pio, psm->sm, psm->offset, rx_pin_base, rx_pin_base + 1); else ok = false;
 	pio_sm_put(rx_raddr_psm.pio, rx_raddr_psm.sm, ((int)emu_ram)>>17); // Initialize aligned buffer address
