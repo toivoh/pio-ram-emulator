@@ -67,7 +67,7 @@ static void init() {
 
 	// Set up the RAM emulator
 	// =======================
-	bool ok = ram_emu_init(RX_PIN_BASE, TX_PIN_BASE, false);
+	bool ok = ram_emu_init(RX_PIN_BASE, TX_PIN_BASE, true);
 
 	// Check that it worked
 	// --------------------
@@ -77,8 +77,6 @@ static void init() {
 			printf("PIO init failed!\r\n");
 		}
 	}
-
-	ram_emu_configure_dma(true);
 
 	// Release reset
 	// =============

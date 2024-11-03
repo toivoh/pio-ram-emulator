@@ -196,7 +196,7 @@ bool ram_emu_init(int rx_pin_base, int tx_pin_base, bool start_dma) {
 	// Set up DMA
 	// ==========
 	init_dma();
-	if (start_dma) ram_emu_configure_dma(true);
+	if (ok && start_dma) ram_emu_configure_dma(true);
 
 	return ok;
 }
