@@ -8,8 +8,20 @@
 uint16_t __attribute__((section(".spi_ram.emu_ram"))) emu_ram[65536];
 
 
-void ram_emu_init_settings(PioRamEmulator *emu) {
+void ram_emu_set_16bit_mode(PioRamEmulator *emu) {
+	emu->wdata_is_16bit = true;
+	emu->rdata_is_16bit = true;
 }
+
+void ram_emu_set_8bit_mode(PioRamEmulator *emu) {
+	emu->wdata_is_16bit = false;
+	emu->rdata_is_16bit = false;
+}
+
+void ram_emu_init_settings(PioRamEmulator *emu) {
+	ram_emu_set_16bit_mode(emu);
+}
+
 
 bool add_psm(PSM *psm, PIO pio, const pio_program_t *program) {
 	if (!pio_can_add_program(pio, program)) return false;
@@ -61,7 +73,7 @@ void ram_emu_configure_dma(PioRamEmulator *emu, bool enable) {
 	channel_config_set_read_increment(&rx_wdata_cfg, false);
 	channel_config_set_write_increment(&rx_wdata_cfg, true);
 	if (enable) channel_config_set_dreq(&rx_wdata_cfg, pio_get_dreq(emu->rx_wdata_psm.pio, emu->rx_wdata_psm.sm, false)); // dreq from RX FIFO
-	channel_config_set_transfer_data_size(&rx_wdata_cfg, DMA_SIZE_16);
+	channel_config_set_transfer_data_size(&rx_wdata_cfg, emu->wdata_is_16bit ? DMA_SIZE_16 : DMA_SIZE_8);
 
 	//dma_channel_configure(emu->rx_wdata_channel, &rx_wdata_cfg, rx_wdata_channel_dest, rx_wdata_channel_src, sizeof(emu_ram)/2, true); // Start the channel, very big transfer count
 	dma_channel_configure(emu->rx_wdata_channel, &rx_wdata_cfg, rx_wdata_channel_dest, rx_wdata_channel_src, 1, false); // trans_count = 1, don't start
@@ -105,7 +117,7 @@ void ram_emu_configure_dma(PioRamEmulator *emu, bool enable) {
 	channel_config_set_read_increment(&tx_rdata_cfg, true);
 	channel_config_set_write_increment(&tx_rdata_cfg, false);
 	if (enable) channel_config_set_dreq(&tx_rdata_cfg, pio_get_dreq(emu->tx_rdata_psm.pio, emu->tx_rdata_psm.sm, true)); // dreq from TX FIFO
-	channel_config_set_transfer_data_size(&tx_rdata_cfg, DMA_SIZE_16);
+	channel_config_set_transfer_data_size(&tx_rdata_cfg, emu->rdata_is_16bit ? DMA_SIZE_16 : DMA_SIZE_8);
 
 	//dma_channel_configure(emu->tx_rdata_channel, &tx_rdata_cfg, tx_rdata_channel_dest, tx_rdata_channel_src, sizeof(emu_ram)/2, true); // Start the channel, very big transfer count
 	dma_channel_configure(emu->tx_rdata_channel, &tx_rdata_cfg, tx_rdata_channel_dest, tx_rdata_channel_src, 1, false); // trans_count = 1, don't start

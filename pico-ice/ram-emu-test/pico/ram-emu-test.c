@@ -42,7 +42,7 @@ PSM sb_serial_in_psm;
 PioRamEmulator ram_emu;
 
 
-static void init(bool enable_sb_in) {
+static void init(bool ram_emu_16bit_mode, bool enable_sb_in) {
 	// Initialize PLL, USB, ...
 	// ========================
 	set_sys_clock_pll(1512 * MHZ, 5, 6); //  50.4 MHz for RP2040, half for FPGA
@@ -78,6 +78,7 @@ static void init(bool enable_sb_in) {
 	// Set up the RAM emulator
 	// =======================
 	ram_emu_init_settings(&ram_emu);
+	if (!ram_emu_16bit_mode) ram_emu_set_8bit_mode(&ram_emu);
 	bool ok = ram_emu_init(&ram_emu, SB_IN_PIN_BASE, SB_OUT_PIN_BASE, false);
 
 	// Start PIO
@@ -227,7 +228,7 @@ int print_rx_fifo_data_tud_task(int flags) {
 
 
 int test_fpga2() {
-	init(true);
+	init(true, true);
 
 /*
 	uint16_t payloads[] = {
@@ -301,7 +302,7 @@ int test_fpga2() {
 }
 
 int test_fpga3() {
-	init(true);
+	init(true, true);
 
 	bool run_mode = false;
 
@@ -365,7 +366,7 @@ int test_dma1() {
 	const bool do_dma = true;
 	const int pflags = do_dma ? PRINT_FLAGS_SB_IN : PRINT_FLAGS_ALL;
 
-	init(true);
+	init(true, true);
 	//if (do_dma) init_dma();
 
 	bool run_mode = false;
@@ -457,7 +458,7 @@ int test_dma2() {
 	const bool do_dma = true;
 	const int pflags = do_dma ? PRINT_FLAGS_SB_IN : PRINT_FLAGS_ALL;
 
-	init(true);
+	init(true, true);
 	//if (do_dma) init_dma();
 
 	bool run_mode = false;
@@ -555,13 +556,13 @@ int test_dma2() {
 	}
 }
 
-int test_read_dma() {
+int test_read_dma(bool _16bit) {
 	const bool do_dma = true;
 	const int pflags = do_dma ? PRINT_FLAGS_SB_IN : PRINT_FLAGS_ALL;
 
 	for (int i = 0; i < emu_ram_elements; i++) emu_ram[i] = i;
 
-	init(false);
+	init(_16bit, false);
 	//if (do_dma) init_dma();
 
 	bool run_mode = false;
@@ -634,10 +635,18 @@ int test_read_dma() {
 				send_cfgmode_read_rxpayload(rx_index);
 				send_cfgmode_read_rxtimestamp(rx_index);
 				int payload = sbio2_receive();
+				if (!_16bit) payload &= 255;
 				int timestamp = sbio2_receive();
 				print_rx_fifo_data_tud_task(PRINT_FLAGS_ALL);
 
-				int expected_payload = j*(RCOUNT + 1) + i;
+				int expected_payload;
+
+				if (_16bit) expected_payload = j*(RCOUNT + 1) + i;
+				else {
+					int addr = j*(RCOUNT + 1)*2 + i;
+					if ((addr & 1) != 0) expected_payload = addr >> 9;
+					else expected_payload = (addr >> 1) & 255;
+				}
 				if (payload != expected_payload) {
 					num_errors++;
 					printf("(%d, %d): Expected payload = %d, got %d! ****", j, i, expected_payload, payload);
@@ -673,5 +682,6 @@ int main(void) {
 	//return test_dma1();
 	//return test_dma2();
 
-	return test_read_dma();
+	//return test_read_dma(true);
+	return test_read_dma(false);
 };

@@ -10,6 +10,12 @@ typedef struct {
 } PSM;
 
 typedef struct {
+	// Configuration
+	// =============
+	bool wdata_is_16bit, rdata_is_16bit;
+
+	// State
+	// =====
 	PSM tx_rdata_psm;
 	PSM rx_wdata_psm, rx_waddr_psm, rx_wcount_psm;
 	PSM               rx_raddr_psm, rx_rcount_psm;
@@ -24,6 +30,9 @@ static const int emu_ram_elements = 65536;
 
 
 void ram_emu_init_settings(PioRamEmulator *emu); // Call to initialize emu before calling ram_emu_init
+void ram_emu_set_8bit_mode(PioRamEmulator *emu);
+void ram_emu_set_16bit_mode(PioRamEmulator *emu);
+
 bool ram_emu_init(PioRamEmulator *emu, int rx_pin_base, int tx_pin_base, bool start_dma);
 void ram_emu_configure_dma(PioRamEmulator *emu, bool enable);
 void ram_emu_stop_dma(PioRamEmulator *emu);
