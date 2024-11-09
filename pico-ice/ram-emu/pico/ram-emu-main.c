@@ -28,6 +28,9 @@
 #endif
 
 
+PioRamEmulator ram_emu;
+
+
 static void init() {
 	// Initialize PLL, USB, ...
 	// ========================
@@ -67,7 +70,7 @@ static void init() {
 
 	// Set up the RAM emulator
 	// =======================
-	bool ok = ram_emu_init(RX_PIN_BASE, TX_PIN_BASE, true);
+	bool ok = ram_emu_init(&ram_emu, RX_PIN_BASE, TX_PIN_BASE, true);
 
 	// Check that it worked
 	// --------------------

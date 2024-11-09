@@ -39,6 +39,9 @@ bool sb_serial_in_on = false;
 PSM sb_serial_in_psm;
 
 
+PioRamEmulator ram_emu;
+
+
 static void init(bool enable_sb_in) {
 	// Initialize PLL, USB, ...
 	// ========================
@@ -74,7 +77,7 @@ static void init(bool enable_sb_in) {
 
 	// Set up the RAM emulator
 	// =======================
-	bool ok = ram_emu_init(SB_IN_PIN_BASE, SB_OUT_PIN_BASE, false);
+	bool ok = ram_emu_init(&ram_emu, SB_IN_PIN_BASE, SB_OUT_PIN_BASE, false);
 
 	// Start PIO
 	// =========
@@ -101,11 +104,11 @@ static void init(bool enable_sb_in) {
 
 // Caller should add start bit manually
 void sbio2_send_raw(uint data_out) {
-	pio_sm_put_blocking(pio0, tx_rdata_psm.sm, data_out);
+	pio_sm_put_blocking(ram_emu.tx_rdata_psm.pio, ram_emu.tx_rdata_psm.sm, data_out);
 }
 
 uint sbio2_receive() {
-	return pio_sm_get_blocking(rx_wdata_psm.pio, rx_wdata_psm.sm);
+	return pio_sm_get_blocking(ram_emu.rx_wdata_psm.pio, ram_emu.rx_wdata_psm.sm);
 }
 
 
@@ -187,33 +190,33 @@ int print_rx_fifo_data_tud_task(int flags) {
 		tud_task();
 	}
 
-	if ((flags & 2) && !pio_sm_is_rx_fifo_empty(rx_wdata_psm.pio, rx_wdata_psm.sm)) {
-		uint data = pio_sm_get(rx_wdata_psm.pio, rx_wdata_psm.sm);
+	if ((flags & 2) && !pio_sm_is_rx_fifo_empty(ram_emu.rx_wdata_psm.pio, ram_emu.rx_wdata_psm.sm)) {
+		uint data = pio_sm_get(ram_emu.rx_wdata_psm.pio, ram_emu.rx_wdata_psm.sm);
 		value = data;
 		printf("Received rx_wdata = 0x%x\r\n", data);
 		tud_task();
 	}
 
-	if ((flags & 4) && !pio_sm_is_rx_fifo_empty(rx_waddr_psm.pio, rx_waddr_psm.sm)) {
-		uint data = pio_sm_get(rx_waddr_psm.pio, rx_waddr_psm.sm);
+	if ((flags & 4) && !pio_sm_is_rx_fifo_empty(ram_emu.rx_waddr_psm.pio, ram_emu.rx_waddr_psm.sm)) {
+		uint data = pio_sm_get(ram_emu.rx_waddr_psm.pio, ram_emu.rx_waddr_psm.sm);
 		printf("Received rx_waddr = 0x%x\r\n", data);
 		tud_task();
 	}
 
-	if ((flags & 8) && !pio_sm_is_rx_fifo_empty(rx_wcount_psm.pio, rx_wcount_psm.sm)) {
-		uint data = pio_sm_get(rx_wcount_psm.pio, rx_wcount_psm.sm);
+	if ((flags & 8) && !pio_sm_is_rx_fifo_empty(ram_emu.rx_wcount_psm.pio, ram_emu.rx_wcount_psm.sm)) {
+		uint data = pio_sm_get(ram_emu.rx_wcount_psm.pio, ram_emu.rx_wcount_psm.sm);
 		printf("Received rx_wcount = 0x%x\r\n", data);
 		tud_task();
 	}
 
-	if ((flags & 16) && !pio_sm_is_rx_fifo_empty(rx_raddr_psm.pio, rx_raddr_psm.sm)) {
-		uint data = pio_sm_get(rx_raddr_psm.pio, rx_raddr_psm.sm);
+	if ((flags & 16) && !pio_sm_is_rx_fifo_empty(ram_emu.rx_raddr_psm.pio, ram_emu.rx_raddr_psm.sm)) {
+		uint data = pio_sm_get(ram_emu.rx_raddr_psm.pio, ram_emu.rx_raddr_psm.sm);
 		printf("Received rx_raddr = 0x%x\r\n", data);
 		tud_task();
 	}
 
-	if ((flags & 32) && !pio_sm_is_rx_fifo_empty(rx_rcount_psm.pio, rx_rcount_psm.sm)) {
-		uint data = pio_sm_get(rx_rcount_psm.pio, rx_rcount_psm.sm);
+	if ((flags & 32) && !pio_sm_is_rx_fifo_empty(ram_emu.rx_rcount_psm.pio, ram_emu.rx_rcount_psm.sm)) {
+		uint data = pio_sm_get(ram_emu.rx_rcount_psm.pio, ram_emu.rx_rcount_psm.sm);
 		printf("Received rx_rcount = 0x%x\r\n", data);
 		tud_task();
 	}
@@ -248,13 +251,13 @@ int test_fpga2() {
 			printf("Received sb data = 0x%x\r\n", data);
 		}
 
-		if (!pio_sm_is_rx_fifo_empty(rx_wdata_psm.pio, rx_wdata_psm.sm)) {
-			uint data = pio_sm_get(rx_wdata_psm.pio, rx_wdata_psm.sm);
+		if (!pio_sm_is_rx_fifo_empty(ram_emu.rx_wdata_psm.pio, ram_emu.rx_wdata_psm.sm)) {
+			uint data = pio_sm_get(ram_emu.rx_wdata_psm.pio, ram_emu.rx_wdata_psm.sm);
 			printf("Received rx_wdata = 0x%x\r\n", data);
 		}
 
-		if (!pio_sm_is_rx_fifo_empty(rx_waddr_psm.pio, rx_waddr_psm.sm)) {
-			uint data = pio_sm_get(rx_waddr_psm.pio, rx_waddr_psm.sm);
+		if (!pio_sm_is_rx_fifo_empty(ram_emu.rx_waddr_psm.pio, ram_emu.rx_waddr_psm.sm)) {
+			uint data = pio_sm_get(ram_emu.rx_waddr_psm.pio, ram_emu.rx_waddr_psm.sm);
 			printf("Received rx_waddr = 0x%x\r\n", data);
 		}
 
@@ -420,7 +423,7 @@ int test_dma1() {
 		}
 
 		// Enable DMA and start run mode
-		if (do_dma) ram_emu_configure_dma(true);
+		if (do_dma) ram_emu_configure_dma(&ram_emu, true);
 		run_mode = true;
 		gpio_put(RUN_MODE_PIN, run_mode);
 		printf("Set run_mode = %d\r\n", run_mode);
@@ -432,8 +435,8 @@ int test_dma1() {
 
 		// Stop DMA and go back to cfg mode
 		if (do_dma) {
-			ram_emu_stop_dma();
-			ram_emu_configure_dma(false);
+			ram_emu_stop_dma(&ram_emu);
+			ram_emu_configure_dma(&ram_emu, false);
 		}
 		run_mode = false;
 		gpio_put(RUN_MODE_PIN, run_mode);
@@ -522,7 +525,7 @@ int test_dma2() {
 		}
 
 		// Enable DMA and start run mode
-		if (do_dma) ram_emu_configure_dma(true);
+		if (do_dma) ram_emu_configure_dma(&ram_emu, true);
 		run_mode = true;
 		gpio_put(RUN_MODE_PIN, run_mode);
 		printf("Set run_mode = %d\r\n", run_mode);
@@ -534,8 +537,8 @@ int test_dma2() {
 
 		// Stop DMA and go back to cfg mode
 		if (do_dma) {
-			ram_emu_stop_dma();
-			ram_emu_configure_dma(false);
+			ram_emu_stop_dma(&ram_emu);
+			ram_emu_configure_dma(&ram_emu, false);
 		}
 		run_mode = false;
 		gpio_put(RUN_MODE_PIN, run_mode);
@@ -587,7 +590,7 @@ int test_read_dma() {
 		while (time_us_64() < next_time) print_rx_fifo_data_tud_task(PRINT_FLAGS_ALL);
 
 		// Enable DMA and start run mode
-		if (do_dma) ram_emu_configure_dma(true);
+		if (do_dma) ram_emu_configure_dma(&ram_emu, true);
 		run_mode = true;
 		gpio_put(RUN_MODE_PIN, run_mode);
 		printf("Set run_mode = %d\r\n", run_mode);
@@ -599,8 +602,8 @@ int test_read_dma() {
 
 		// Stop DMA and go back to cfg mode
 		if (do_dma) {
-			ram_emu_stop_dma();
-			ram_emu_configure_dma(false);
+			ram_emu_stop_dma(&ram_emu);
+			ram_emu_configure_dma(&ram_emu, false);
 		}
 		run_mode = false;
 		gpio_put(RUN_MODE_PIN, run_mode);
