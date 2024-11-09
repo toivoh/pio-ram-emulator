@@ -556,11 +556,16 @@ int test_dma2() {
 	}
 }
 
-int test_read_dma(bool _16bit) {
+int get_read_data_byte(int addr) {
+	if ((addr & 1) != 0) return addr >> 9;
+	else return (addr >> 1) & 255;
+}
+
+int get_write_data(int burst, int index) { return (0x1234 + (burst*15 + index)*0x1111) & 0xffff; }
+
+int test_read_write_dma(bool _16bit) {
 	const bool do_dma = true;
 	const int pflags = do_dma ? PRINT_FLAGS_SB_IN : PRINT_FLAGS_ALL;
-
-	for (int i = 0; i < emu_ram_elements; i++) emu_ram[i] = i;
 
 	init(_16bit, false);
 	//if (do_dma) init_dma();
@@ -571,9 +576,14 @@ int test_read_dma(bool _16bit) {
 	uint64_t last_time = 0;
 	while (true) {
 
+		for (int i = 0; i < emu_ram_elements; i++) emu_ram[i] = i;
+
 		const int RCOUNT = 2;
-		const int NUM_READS = MAX_MESSAGES/2 - 1;
+		const int NUM_READS = MAX_MESSAGES/4 - 1;
 		const int EXPECTED_RX_MSGS = RCOUNT * NUM_READS;
+
+		const int WCOUNT = 2;
+		const int NUM_WRITES = MAX_MESSAGES/2/(WCOUNT + 1) - 1;
 
 		int num_tx_msgs = 0;
 		int wait_cycles = 0;
@@ -582,6 +592,19 @@ int test_read_dma(bool _16bit) {
 		for (int i = 0; i < NUM_READS; i++) {
 			set_txmsg_raddr(num_tx_msgs++, i*(RCOUNT + 1), 12*(RCOUNT-1)); wait_cycles += 12*RCOUNT;
 		}
+
+		set_txmsg_wcount(num_tx_msgs++, WCOUNT); wait_cycles += 12;
+		for (int i = 0; i < NUM_WRITES; i++) {
+			set_txmsg_waddr(num_tx_msgs++, i*(WCOUNT+1)+1); wait_cycles += 12;
+			for (int j=0; j < WCOUNT; j++) {
+				set_txmsg_wdata(num_tx_msgs++, get_write_data(i, j)); wait_cycles += 12;
+			}
+		}
+
+
+		if (_16bit) printf("16 bit mode\r\n");
+		else printf("8 bit mode\r\n");
+
 
 		send_cfgmode_set_txcfg(0, num_tx_msgs, 0, 0);
 		printf("Sent cfg mode data\r\n");
@@ -614,6 +637,9 @@ int test_read_dma(bool _16bit) {
 
 		int num_errors = 0;
 
+		// Check read data
+		// ===============
+
 		send_cfgmode_read_rxcfg();
 		int final_rx_index = sbio2_receive();
 		printf("rx_index = %d\r\n", final_rx_index);
@@ -642,11 +668,8 @@ int test_read_dma(bool _16bit) {
 				int expected_payload;
 
 				if (_16bit) expected_payload = j*(RCOUNT + 1) + i;
-				else {
-					int addr = j*(RCOUNT + 1)*2 + i;
-					if ((addr & 1) != 0) expected_payload = addr >> 9;
-					else expected_payload = (addr >> 1) & 255;
-				}
+				else expected_payload = get_read_data_byte(j*(RCOUNT + 1)*2 + i);
+
 				if (payload != expected_payload) {
 					num_errors++;
 					printf("(%d, %d): Expected payload = %d, got %d! ****", j, i, expected_payload, payload);
@@ -667,6 +690,74 @@ int test_read_dma(bool _16bit) {
 			if (num_errors >= 10) break;
 		}
 
+		// Check written data
+		// ==================
+		int index = 0;
+		int w_iter = 0;
+		int w_index = 1 + !_16bit;
+
+		if (_16bit) {
+			// 16 bit case
+			// -----------
+			while (index < emu_ram_elements) {
+				if (index < w_index) {
+					int expected = index;
+					int got = emu_ram[index];
+					if (got != expected) {
+						num_errors++;
+						printf("(%d): Expected wdata = %d, got %d! ****", index, expected, got);
+					}
+					index++;
+				} else {
+					for (int j = 0; j < WCOUNT; j++) {
+						int expected = get_write_data(w_iter, j);
+						int got = emu_ram[index];
+						if (got != expected) {
+							num_errors++;
+							printf("(%d, %d, %d): Expected wdata = %d, got %d! ****", index, w_iter, j, expected, got);
+						}
+						index++;
+					}
+					w_iter++;
+					if (w_iter < NUM_WRITES) w_index = w_iter*(WCOUNT+1)+1;
+					else w_index = emu_ram_elements*4;
+				}
+				print_rx_fifo_data_tud_task(PRINT_FLAGS_ALL);
+			}
+		} else {
+			// 8 bit case
+			// -----------
+			const int num_elements = 2*emu_ram_elements;
+			uint8_t *ram_b = (uint8_t *)emu_ram;
+
+			while (index < num_elements) {
+				if (index < w_index) {
+					int expected = get_read_data_byte(index);
+					int got = ram_b[index];
+					if (got != expected) {
+						num_errors++;
+						printf("(%d): Expected wdata = %d, got %d! ****", index, expected, got);
+					}
+					index++;
+				} else {
+					for (int j = 0; j < WCOUNT; j++) {
+						int expected = get_write_data(w_iter, j) & 255;
+						int got = ram_b[index];
+						if (got != expected) {
+							num_errors++;
+							printf("(%d, %d, %d): Expected wdata = %d, got %d! ****", index, w_iter, j, expected, got);
+						}
+						index++;
+					}
+					w_iter++;
+					if (w_iter < NUM_WRITES) w_index = 2*(w_iter*(WCOUNT+1)+1);
+					else w_index = num_elements*4;
+				}
+				print_rx_fifo_data_tud_task(PRINT_FLAGS_ALL);
+			}
+
+		}
+
 		printf("First timestamp = %d, %d <= delay <= %d\r\n", first_timestamp, min_delay, max_delay);
 
 		if (num_errors > 0) printf("%d errors found! **************************************************************\r\n", num_errors);
@@ -682,6 +773,6 @@ int main(void) {
 	//return test_dma1();
 	//return test_dma2();
 
-	//return test_read_dma(true);
-	return test_read_dma(false);
+	//return test_read_write_dma(true);
+	return test_read_write_dma(false);
 };
