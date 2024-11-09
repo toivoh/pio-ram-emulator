@@ -575,7 +575,7 @@ int test_read_dma() {
 
 		set_txmsg_rcount(num_tx_msgs++, RCOUNT); wait_cycles += 12;
 		for (int i = 0; i < NUM_READS; i++) {
-			set_txmsg_raddr(num_tx_msgs++, i*(RCOUNT + 1), 12); wait_cycles += 24;
+			set_txmsg_raddr(num_tx_msgs++, i*(RCOUNT + 1), 12*(RCOUNT-1)); wait_cycles += 12*RCOUNT;
 		}
 
 		send_cfgmode_set_txcfg(0, num_tx_msgs, 0, 0);
