@@ -23,6 +23,7 @@ extern uint16_t emu_ram[65536];
 static const int emu_ram_elements = 65536;
 
 
+void ram_emu_init_settings(PioRamEmulator *emu); // Call to initialize emu before calling ram_emu_init
 bool ram_emu_init(PioRamEmulator *emu, int rx_pin_base, int tx_pin_base, bool start_dma);
 void ram_emu_configure_dma(PioRamEmulator *emu, bool enable);
 void ram_emu_stop_dma(PioRamEmulator *emu);

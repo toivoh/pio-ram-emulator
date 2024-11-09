@@ -70,6 +70,7 @@ static void init() {
 
 	// Set up the RAM emulator
 	// =======================
+	ram_emu_init_settings(&ram_emu);
 	bool ok = ram_emu_init(&ram_emu, RX_PIN_BASE, TX_PIN_BASE, true);
 
 	// Check that it worked

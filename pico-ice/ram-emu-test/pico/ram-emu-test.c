@@ -77,6 +77,7 @@ static void init(bool enable_sb_in) {
 
 	// Set up the RAM emulator
 	// =======================
+	ram_emu_init_settings(&ram_emu);
 	bool ok = ram_emu_init(&ram_emu, SB_IN_PIN_BASE, SB_OUT_PIN_BASE, false);
 
 	// Start PIO

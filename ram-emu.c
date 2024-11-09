@@ -8,6 +8,9 @@
 uint16_t __attribute__((section(".spi_ram.emu_ram"))) emu_ram[65536];
 
 
+void ram_emu_init_settings(PioRamEmulator *emu) {
+}
+
 bool add_psm(PSM *psm, PIO pio, const pio_program_t *program) {
 	if (!pio_can_add_program(pio, program)) return false;
 	psm->pio = pio;
