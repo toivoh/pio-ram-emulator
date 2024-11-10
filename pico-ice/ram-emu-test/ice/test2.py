@@ -155,9 +155,30 @@ async def test_both_modes(dut):
 
 	cfg_payloads = []
 
-	def add_cfg_command(header, data):
-		cfg_payloads.append(((header | (data << CFG_HEADER_BITS))&(2**RX_DATA_BITS - 1)) << IO_BITS*(1 + RX_HEADER_CYCLES))
+	#cfg_payload_cycles = 8+3
+	cfg_payload_cycles = (1 + RX_HEADER_CYCLES + RX_DATA_CYCLES + 1)*2
 
+	def add_cfg_command(header, data):
+		#cfg_payloads.append(((header | (data << CFG_HEADER_BITS))&(2**RX_DATA_BITS - 1)) << IO_BITS*(1 + RX_HEADER_CYCLES))
+
+		combined = (header | (data << CFG_HEADER_BITS))&(2**RX_DATA_BITS - 1)
+
+		byte0 = combined & 127
+		byte1 = (combined >> 7) & 127
+
+		#print("add_cfg_command: header = ", hex(header), ", data = ", hex(data), ", byte0 = ", hex(byte0), ", byte1 = ", hex(byte1), sep="")
+
+		payload = -1 # stop bits
+		payload = (payload << 8) | 255 # extra stop bits / filler
+		payload = (payload << 8) | (byte1 | 128)
+		payload = payload << IO_BITS*(1 + RX_HEADER_CYCLES) # start bits and header
+
+		payload = (payload << IO_BITS) | IO_MASK # stop bits
+		payload = (payload << 8) | 255 # extra stop bits / filler
+		payload = (payload << 8) | (byte0 | 0)
+		payload = payload << IO_BITS*(1 + RX_HEADER_CYCLES) # start bits and header
+
+		cfg_payloads.append(payload)
 
 	# Set up commands to configure the tester before run mode
 	# -------------------------------------------------------
@@ -199,7 +220,7 @@ async def test_both_modes(dut):
 	# -----------------
 
 	for payload in cfg_payloads:
-		for i in range(8+3):
+		for i in range(cfg_payload_cycles):
 			dut.rx_pins.value = payload & IO_MASK
 			payload >>= IO_BITS
 
@@ -259,16 +280,16 @@ async def test_both_modes(dut):
 	receiver = Receiver()
 
 	for payload in cfg_payloads:
-		for i in range(8+3):
+		for i in range(cfg_payload_cycles):
 			dut.rx_pins.value = payload & IO_MASK
 			payload >>= IO_BITS
 
 			receiver.step(dut.tx_pins.value.to_unsigned())
 			await ClockCycles(dut.clk, 1)
 
-		dut.rx_pins.value = IO_MASK # Add a stop bit
-		receiver.step(dut.tx_pins.value.to_unsigned())
-		await ClockCycles(dut.clk, 1)
+		#dut.rx_pins.value = IO_MASK # Add a stop bit
+		#receiver.step(dut.tx_pins.value.to_unsigned())
+		#await ClockCycles(dut.clk, 1)
 
 	dut.rx_pins.value = IO_MASK
 	for i in range(20):

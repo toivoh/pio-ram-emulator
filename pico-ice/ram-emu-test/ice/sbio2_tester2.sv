@@ -88,6 +88,9 @@ module sbio2_tester2 #( parameter IO_BITS=2, RX_HEADER_CYCLES=2, RX_DATA_CYCLES=
 	localparam RX_DATA_BITS = IO_BITS * RX_DATA_CYCLES;
 	localparam RX_TIMESTAMP_BITS = RX_DATA_BITS;
 
+	localparam RX_CFG_DATA_CYCLES = 4;
+	localparam RX_CFG_DATA_BITS = IO_BITS * RX_CFG_DATA_CYCLES;
+
 	localparam CFG_DATA_BITS = 10; // RX_DATA_BITS - CFG_HEADER_BITS;
 
 
@@ -223,12 +226,21 @@ module sbio2_tester2 #( parameter IO_BITS=2, RX_HEADER_CYCLES=2, RX_DATA_CYCLES=
 	// RX shift register
 	// -----------------
 	reg [RX_DATA_BITS-1:0] rx_sreg;
-	reg rx_sreg_valid, rx_sreg_valid2;
+	reg rx_sreg_valid;
+
+	reg [2*RX_CFG_DATA_BITS-1:0] rx_cfg_sreg;
+	reg rx_cfg_sreg_valid, rx_cfg_sreg_valid2;
+	localparam LOG2_RX_CFG_DATA_CYCLES = $clog2(RX_CFG_DATA_CYCLES);
+	wire in_rx_cfg_window = !rx_counter[LOG2_RX_CFG_DATA_CYCLES];
+	wire rx_receiving_cfg_data = rx_receiving_data && in_rx_cfg_window;
 
 	always_ff @(posedge clk) begin
 		if (rx_receiving_data) rx_sreg <= {rx_pins, rx_sreg[RX_DATA_BITS-1:IO_BITS]};
 		rx_sreg_valid <= rx_done; // only valid for one cycle
-		rx_sreg_valid2 <= rx_sreg_valid; // valid for one cycle after that
+
+		if (rx_receiving_cfg_data) rx_cfg_sreg <= {rx_pins, rx_cfg_sreg[2*RX_CFG_DATA_BITS-1:IO_BITS]};
+		rx_cfg_sreg_valid <= rx_done; // only valid for one cycle
+		rx_cfg_sreg_valid2 <= rx_cfg_sreg_valid; // valid for one cycle after that
 	end
 
 	// RX memories
@@ -279,10 +291,19 @@ module sbio2_tester2 #( parameter IO_BITS=2, RX_HEADER_CYCLES=2, RX_DATA_CYCLES=
 	// --------
 	wire cfg_mode = !run_mode;
 
-	assign {cfg_data, cfg_header} = rx_sreg;
+	//assign {cfg_data, cfg_header} = rx_sreg;
+
+	// Unpack and repack cfg command
+	wire rx_cfg_msb1, rx_cfg_msb0;
+	wire [RX_CFG_DATA_BITS-1-1:0] rx_cfg1, rx_cfg0;
+	assign {rx_cfg_msb1, rx_cfg1, rx_cfg_msb0, rx_cfg0} = rx_cfg_sreg;
+	assign {cfg_data, cfg_header} = {rx_cfg1, rx_cfg0};
+
+
 	assign rx_msg_index = cfg_data;
 
-	assign set_cfg = cfg_mode && rx_sreg_valid2; // use rx_sreg_valid2 to give time for synchronous readout
+	// Apply new command only if last MSB is set
+	assign set_cfg = cfg_mode && rx_cfg_msb1 && rx_cfg_sreg_valid2; // use rx_sreg_valid2 to give time for synchronous readout
 
 	reg [MSG_INDEX_BITS-1:0] msg_index;
 	reg [CFG_DATA_BITS-1:0] cfg_data_saved0, cfg_data_saved1;

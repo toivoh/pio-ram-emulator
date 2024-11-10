@@ -140,8 +140,17 @@ enum {
 };
 
 void send_cfgmode_msg(uint header, uint data) {
+	/*
 	uint payload = (header & ((1 << CFG_HEADER_BITS) - 1)) | (data << CFG_HEADER_BITS);
 	sbio2_send_raw(payload);
+	*/
+
+	uint combined = (header & ((1 << CFG_HEADER_BITS) - 1)) | (data << CFG_HEADER_BITS);
+	uint8_t byte0 = combined & 127;
+	uint8_t byte1 = (combined >> 7) & 127;
+
+	sbio2_send_raw(byte0);
+	sbio2_send_raw(byte1 | 128);
 }
 
 
@@ -777,6 +786,6 @@ int main(void) {
 	//return test_dma1();
 	//return test_dma2();
 
-	//return test_read_write_dma(true); // Test 16 bit mode
-	return test_read_write_dma(false); // Test 8 bit mode
+	return test_read_write_dma(true); // Test 16 bit mode
+	//return test_read_write_dma(false); // Test 8 bit mode
 };
