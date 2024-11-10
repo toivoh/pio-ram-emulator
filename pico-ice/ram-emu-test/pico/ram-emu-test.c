@@ -120,7 +120,7 @@ enum {
 
 	IO_BITS = SBIO2_NUM_PINS,
 	RX_DATA_BITS = IO_BITS * RX_DATA_CYCLES,
-	CFG_DATA_BITS = RX_DATA_BITS - CFG_HEADER_BITS
+	CFG_DATA_BITS = 10 //RX_DATA_BITS - CFG_HEADER_BITS
 };
 
 enum {
@@ -132,10 +132,11 @@ enum {
 	CFG_HEADER_SET_COUNT = 5,
 	CFG_HEADER_SET_PAYLOAD0 = 6,
 	CFG_HEADER_SET_PAYLOAD1 = 7,
-	CFG_HEADER_SET_RX_INDEX = 8,
-	CFG_HEADER_READ_RX_INDEX = 9,
-	CFG_HEADER_READ_RX_PAYLOAD = 10,
-	CFG_HEADER_READ_RX_TIMESTAMP = 11
+	CFG_HEADER_SET_PAYLOAD2 = 8,
+	CFG_HEADER_SET_RX_INDEX = 9,
+	CFG_HEADER_READ_RX_INDEX = 10,
+	CFG_HEADER_READ_RX_PAYLOAD = 11,
+	CFG_HEADER_READ_RX_TIMESTAMP = 12
 };
 
 void send_cfgmode_msg(uint header, uint data) {
@@ -157,6 +158,7 @@ void send_cfgmode_set_txmsg(uint index, uint payload, uint count, uint delay) {
 	send_cfgmode_msg(CFG_HEADER_SET_COUNT, count);
 	send_cfgmode_msg(CFG_HEADER_SET_PAYLOAD0, payload);
 	send_cfgmode_msg(CFG_HEADER_SET_PAYLOAD1, payload >> CFG_DATA_BITS);
+	send_cfgmode_msg(CFG_HEADER_SET_PAYLOAD2, payload >> (2*CFG_DATA_BITS));
 }
 
 void set_txmsg_wcount(uint index, uint count)   { send_cfgmode_set_txmsg(index, (count   << TX_HEADER_BITS) | TX_HEADER_TRANSCOUNT | (TX_HEADER_NONE << 1), 10, 1); }
@@ -775,6 +777,6 @@ int main(void) {
 	//return test_dma1();
 	//return test_dma2();
 
-	//return test_read_write_dma(true);
-	return test_read_write_dma(false);
+	//return test_read_write_dma(true); // Test 16 bit mode
+	return test_read_write_dma(false); // Test 8 bit mode
 };

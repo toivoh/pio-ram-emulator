@@ -73,10 +73,11 @@ module sbio2_tester2 #( parameter IO_BITS=2, RX_HEADER_CYCLES=2, RX_DATA_CYCLES=
 	localparam CFG_HEADER_SET_COUNT = 5;
 	localparam CFG_HEADER_SET_PAYLOAD0 = 6;
 	localparam CFG_HEADER_SET_PAYLOAD1 = 7;
-	localparam CFG_HEADER_SET_RX_INDEX = 8;
-	localparam CFG_HEADER_READ_RX_INDEX = 9;
-	localparam CFG_HEADER_READ_RX_PAYLOAD = 10;
-	localparam CFG_HEADER_READ_RX_TIMESTAMP = 11;
+	localparam CFG_HEADER_SET_PAYLOAD2 = 8;
+	localparam CFG_HEADER_SET_RX_INDEX = 9;
+	localparam CFG_HEADER_READ_RX_INDEX = 10;
+	localparam CFG_HEADER_READ_RX_PAYLOAD = 11;
+	localparam CFG_HEADER_READ_RX_TIMESTAMP = 12;
 
 
 	localparam MSG_INDEX_BITS = $clog2(MAX_MESSAGES);
@@ -87,7 +88,7 @@ module sbio2_tester2 #( parameter IO_BITS=2, RX_HEADER_CYCLES=2, RX_DATA_CYCLES=
 	localparam RX_DATA_BITS = IO_BITS * RX_DATA_CYCLES;
 	localparam RX_TIMESTAMP_BITS = RX_DATA_BITS;
 
-	localparam CFG_DATA_BITS = RX_DATA_BITS - CFG_HEADER_BITS;
+	localparam CFG_DATA_BITS = 10; // RX_DATA_BITS - CFG_HEADER_BITS;
 
 
 	wire set_cfg;
@@ -284,7 +285,7 @@ module sbio2_tester2 #( parameter IO_BITS=2, RX_HEADER_CYCLES=2, RX_DATA_CYCLES=
 	assign set_cfg = cfg_mode && rx_sreg_valid2; // use rx_sreg_valid2 to give time for synchronous readout
 
 	reg [MSG_INDEX_BITS-1:0] msg_index;
-	reg [CFG_DATA_BITS-1:0] cfg_data_saved;
+	reg [CFG_DATA_BITS-1:0] cfg_data_saved0, cfg_data_saved1;
 
 	always_ff @(posedge clk) begin
 		if (set_cfg) begin
@@ -292,8 +293,9 @@ module sbio2_tester2 #( parameter IO_BITS=2, RX_HEADER_CYCLES=2, RX_DATA_CYCLES=
 				CFG_HEADER_SET_INDEX: msg_index <= cfg_data;
 				CFG_HEADER_SET_DELAY: tx_delays[msg_index] <= cfg_data;
 				CFG_HEADER_SET_COUNT: tx_counts[msg_index] <= cfg_data;
-				CFG_HEADER_SET_PAYLOAD0: cfg_data_saved <= cfg_data;
-				CFG_HEADER_SET_PAYLOAD1: tx_payloads[msg_index] <= {cfg_data, cfg_data_saved};
+				CFG_HEADER_SET_PAYLOAD0: cfg_data_saved0 <= cfg_data;
+				CFG_HEADER_SET_PAYLOAD1: cfg_data_saved1 <= cfg_data;
+				CFG_HEADER_SET_PAYLOAD2: tx_payloads[msg_index] <= {cfg_data, cfg_data_saved1, cfg_data_saved0};
 			endcase
 		end
 	end
