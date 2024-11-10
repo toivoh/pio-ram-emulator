@@ -668,7 +668,8 @@ int test_read_write_dma(bool _16bit) {
 				int expected_payload;
 
 				if (_16bit) expected_payload = j*(RCOUNT + 1) + i;
-				else expected_payload = get_read_data_byte(j*(RCOUNT + 1)*2 + i);
+				//else expected_payload = get_read_data_byte(j*(RCOUNT + 1)*2 + i);
+				else expected_payload = get_read_data_byte(j*(RCOUNT + 1) + i);
 
 				if (payload != expected_payload) {
 					num_errors++;
@@ -694,7 +695,7 @@ int test_read_write_dma(bool _16bit) {
 		// ==================
 		int index = 0;
 		int w_iter = 0;
-		int w_index = 1 + !_16bit;
+		int w_index = 1; // + !_16bit;
 
 		if (_16bit) {
 			// 16 bit case
@@ -727,7 +728,7 @@ int test_read_write_dma(bool _16bit) {
 		} else {
 			// 8 bit case
 			// -----------
-			const int num_elements = 2*emu_ram_elements;
+			const int num_elements = 2*emu_ram_elements; // TODO: just 64 kB? That should be all we can address in this case.
 			uint8_t *ram_b = (uint8_t *)emu_ram;
 
 			while (index < num_elements) {
@@ -750,7 +751,8 @@ int test_read_write_dma(bool _16bit) {
 						index++;
 					}
 					w_iter++;
-					if (w_iter < NUM_WRITES) w_index = 2*(w_iter*(WCOUNT+1)+1);
+					//if (w_iter < NUM_WRITES) w_index = 2*(w_iter*(WCOUNT+1)+1);
+					if (w_iter < NUM_WRITES) w_index = w_iter*(WCOUNT+1)+1;
 					else w_index = num_elements*4;
 				}
 				print_rx_fifo_data_tud_task(PRINT_FLAGS_ALL);

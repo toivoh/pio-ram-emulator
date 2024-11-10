@@ -28,6 +28,7 @@
 //.define PUBLIC SBIO2_TX_LOOP_COUNT 12
 
 .define PUBLIC SBIO2_RX_ADDR_PAD_COUNT (31-SBIO2_NUM_PINS*SBIO2_RX_LOOP_COUNT)
+.define PUBLIC SBIO2_RX_BYTE_ADDR_PAD_COUNT (32-SBIO2_NUM_PINS*SBIO2_RX_LOOP_COUNT)
 
 
 
@@ -415,6 +416,7 @@ static inline void sbio2_rx_10_program_init(PIO pio, uint sm, uint offset, uint 
 
 // SBIO RX address 01
 // ------------------
+// There is a copy of this program called sbio2_rx_byte_addr_01 using a bigger pad count. Keep them in sync!
 // Use `jmp pin` on odd cycles, `in pins` on even -- `jmp pin` seems to be one cycle ahead?
 // y must contain the top address bits (or zero if the data is used for something else)
 .program sbio2_rx_addr_01
@@ -456,6 +458,59 @@ static inline void sbio2_rx_addr_01_program_init(PIO pio, uint sm, uint offset, 
 	sm_config_set_jmp_pin(&c, jmp_pin); // used to detect start bit and header
 
 	sm_config_set_in_shift(&c, true, true, SBIO2_NUM_PINS*SBIO2_RX_LOOP_COUNT+SBIO2_RX_ADDR_PAD_COUNT); // shift right, autopush
+
+	//sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX); // Only need RX fifo, make it 8 deep -- yes, needed for initial pull to set up y!
+
+	pio_sm_init(pio, sm, offset, &c); // Load our configuration, and jump to the start of the program
+	pio_sm_set_enabled(pio, sm, true); // Set the state machine running
+}
+%}
+
+
+// SBIO RX byte address 01 -- variation of sbio2_rx_addr_01
+// ----------------------- --------------------------------
+// This is a copy of sbio2_rx_addr_01 using a bigger pad count. Keep them in sync!
+// Use `jmp pin` on odd cycles, `in pins` on even -- `jmp pin` seems to be one cycle ahead?
+// y must contain the top address bits (or zero if the data is used for something else)
+.program sbio2_rx_byte_addr_01
+	// Read top address bits into Y from TX FIFO
+	pull
+	mov y, osr
+	wait 1 gpio FPGA_CLOCK_PIN     // 1    // TODO: Should we wait for 0 or 1?
+.wrap_target
+restart:
+wait_start_bit:
+	jmp pin, wait_start_bit [1]    // odd
+	jmp pin, continue1             // odd
+
+skip1:
+	nop [3]                        // 1
+skip2:
+	jmp restart [2*SBIO2_RX_LOOP_COUNT] // 1
+
+continue1:
+	set x, (SBIO2_RX_LOOP_COUNT-2) // even
+	jmp pin, skip2 [2]             // odd
+	// The code after this skip takes 2*SBIO2_RX_LOOP_COUNT+1 cycles before wrapping
+loop:
+		in pins, SBIO2_NUM_PINS    // even
+	jmp x--, loop                  // odd
+	in pins, SBIO2_NUM_PINS        // even
+	in y, SBIO2_RX_BYTE_ADDR_PAD_COUNT [1]   // odd  // autopush
+.wrap
+
+
+% c-sdk {
+static inline void sbio2_rx_byte_addr_01_program_init(PIO pio, uint sm, uint offset, uint pin, uint jmp_pin) {
+	pio_sm_set_consecutive_pindirs(pio, sm, pin, SBIO2_NUM_PINS, false);
+	// for (int i = 0; i < SBIO2_NUM_PINS; i++) pio_gpio_init(pio, pin + i); // not needed
+
+	pio_sm_config c = sbio2_rx_byte_addr_01_program_get_default_config(offset);
+
+	sm_config_set_in_pins(&c, pin);
+	sm_config_set_jmp_pin(&c, jmp_pin); // used to detect start bit and header
+
+	sm_config_set_in_shift(&c, true, true, SBIO2_NUM_PINS*SBIO2_RX_LOOP_COUNT+SBIO2_RX_BYTE_ADDR_PAD_COUNT); // shift right, autopush
 
 	//sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX); // Only need RX fifo, make it 8 deep -- yes, needed for initial pull to set up y!
 

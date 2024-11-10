@@ -192,14 +192,33 @@ bool ram_emu_init(PioRamEmulator *emu, int rx_pin_base, int tx_pin_base, bool st
 	// RX waddr
 	// --------
 	psm = &(emu->rx_waddr_psm);
-	if (add_psm(psm, pio, &sbio2_rx_addr_01_program)) sbio2_rx_addr_01_program_init(pio, psm->sm, psm->offset, rx_pin_base, rx_pin_base); else ok = false;
-	pio_sm_put(emu->rx_waddr_psm.pio, emu->rx_waddr_psm.sm, ((int)emu_ram)>>17); // Initialize aligned buffer address
+	if (emu->wdata_is_16bit) {
+		if (add_psm(psm, pio, &sbio2_rx_addr_01_program)) sbio2_rx_addr_01_program_init(pio, psm->sm, psm->offset, rx_pin_base, rx_pin_base); else ok = false;
+	} else {
+		if (add_psm(psm, pio, &sbio2_rx_byte_addr_01_program)) sbio2_rx_byte_addr_01_program_init(pio, psm->sm, psm->offset, rx_pin_base, rx_pin_base); else ok = false;
+	}
+	pio_sm_put(emu->rx_waddr_psm.pio, emu->rx_waddr_psm.sm, ((int)emu_ram)>>(16+emu->wdata_is_16bit)); // Initialize aligned buffer address
 
-	// RX raddr -- initialize after RX waddr (clone)
-	// ---------------------------------------------
+	// RX raddr -- initialize after RX waddr (clone if possible)
+	// ---------------------------------------------------------
+	// The only difference compared to the RX waddr program is the jump pin (and possibly the address granularity)
 	psm = &(emu->rx_raddr_psm);
-	if (clone_psm(psm, &(emu->rx_waddr_psm))) sbio2_rx_addr_01_program_init(pio, psm->sm, psm->offset, rx_pin_base, rx_pin_base + 1); else ok = false;
-	pio_sm_put(emu->rx_raddr_psm.pio, emu->rx_raddr_psm.sm, ((int)emu_ram)>>17); // Initialize aligned buffer address
+	if (emu->rdata_is_16bit == emu->wdata_is_16bit) {
+		// Clone RX waddr program
+		if (emu->wdata_is_16bit) {
+			if (clone_psm(psm, &(emu->rx_waddr_psm))) sbio2_rx_addr_01_program_init(pio, psm->sm, psm->offset, rx_pin_base, rx_pin_base + 1); else ok = false;
+		} else {
+			if (clone_psm(psm, &(emu->rx_waddr_psm))) sbio2_rx_byte_addr_01_program_init(pio, psm->sm, psm->offset, rx_pin_base, rx_pin_base + 1); else ok = false;
+		}
+	} else {
+		// Can't clone
+		if (emu->wdata_is_16bit) {
+			if (add_psm(psm, pio, &sbio2_rx_addr_01_program)) sbio2_rx_addr_01_program_init(pio, psm->sm, psm->offset, rx_pin_base, rx_pin_base + 1); else ok = false;
+		} else {
+			if (add_psm(psm, pio, &sbio2_rx_byte_addr_01_program)) sbio2_rx_byte_addr_01_program_init(pio, psm->sm, psm->offset, rx_pin_base, rx_pin_base + 1); else ok = false;
+		}
+	}
+	pio_sm_put(emu->rx_raddr_psm.pio, emu->rx_raddr_psm.sm, ((int)emu_ram)>>(16+emu->rdata_is_16bit)); // Initialize aligned buffer address
 
 	// Set up DMA
 	// ==========
